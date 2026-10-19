@@ -1,0 +1,376 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>J.A.R.V.I.S. — Assistente por voz</title>
+<style>
+:root{--bg:#0C0A08;--card:#17120d;--fg:#f5efe8;--mu:#9a928a;--ac:#FFC933;--bd:#ffffff22}
+*{box-sizing:border-box}
+html,body{height:100%}
+body{margin:0;background:radial-gradient(ellipse at 50% 20%,#1d1608 0,var(--bg) 60%);color:var(--fg);font:15px/1.5 system-ui,-apple-system,"Segoe UI",sans-serif}
+main{max-width:760px;margin:auto;min-height:100%;display:flex;flex-direction:column;padding:16px;gap:12px}
+header{display:flex;align-items:center;justify-content:space-between}
+h1{margin:0;font-size:20px;letter-spacing:.12em}
+h1 span{color:var(--ac)}
+button{background:var(--ac);color:#000;border:0;border-radius:10px;padding:10px 16px;font-weight:700;cursor:pointer;font:inherit;font-weight:700}
+button.g{background:#ffffff14;color:var(--fg)}
+button:disabled{opacity:.4;cursor:not-allowed}
+#orbWrap{position:relative;display:flex;flex-direction:column;align-items:center;gap:6px}
+canvas{width:260px;height:260px;max-width:70vw;max-height:70vw}
+#status{color:var(--ac);font:12px ui-monospace,monospace;letter-spacing:.2em;text-transform:uppercase;min-height:18px}
+#interim{color:var(--mu);font-size:14px;min-height:21px;text-align:center}
+#chat{flex:1;min-height:140px;max-height:34vh;overflow-y:auto;display:flex;flex-direction:column;gap:8px;padding:4px}
+.m{max-width:85%;padding:9px 13px;border-radius:14px;white-space:pre-wrap;word-wrap:break-word}
+.m.u{align-self:flex-end;background:#ffffff14}
+.m.j{align-self:flex-start;background:#FFC93318;border:1px solid #FFC93340}
+.m.e{align-self:center;color:#ff8a7a;font-size:13px;background:none}
+#bar{display:flex;gap:8px}
+#txt{flex:1;background:#0c0a08;color:var(--fg);border:1px solid var(--bd);border-radius:10px;padding:10px;font:inherit}
+#ctl{display:flex;gap:8px;justify-content:center;flex-wrap:wrap}
+#ctl button{min-width:120px}
+#cam{display:none;position:fixed;right:14px;bottom:14px;width:150px;border-radius:12px;border:1px solid var(--ac);background:#000;transform:scaleX(-1);z-index:5}
+#perm{font-size:12px;color:var(--mu);text-align:center}
+#cfg{display:none;background:var(--card);border:1px solid var(--bd);border-radius:14px;padding:14px}
+#cfg.open{display:block}
+label{display:block;color:var(--mu);font-size:12px;margin:8px 0 3px}
+input,textarea,select{width:100%;background:#0c0a08;color:var(--fg);border:1px solid var(--bd);border-radius:8px;padding:9px;font:inherit}
+textarea{min-height:90px;resize:vertical;font-size:13px}
+.row{display:flex;gap:8px;align-items:center}
+.row>*{flex:1}
+.chk{display:flex;gap:8px;align-items:center;margin-top:8px;color:var(--fg);font-size:13px}
+.chk input{width:auto}
+small{color:var(--mu)}
+</style>
+</head>
+<body>
+<main>
+<header>
+  <h1>J.A.R.V.<span>I.S.</span></h1>
+  <button class="g" id="bcfg">⚙️ Configuração</button>
+</header>
+
+<section id="cfg">
+  <label>Chave da API Gemini (texto) — aistudio.google.com</label>
+  <input id="ak" type="password" placeholder="AIza...">
+  <label>Modelo Gemini (vazio = escolher automaticamente)</label>
+  <input id="gm" placeholder="opcional">
+  <label>Chave ElevenLabs (voz)</label>
+  <input id="ek" type="password" placeholder="sk_...">
+  <label>Voice ID (ElevenLabs)</label>
+  <div class="row"><input id="vid" value="21m00Tcm4TlvDq8ikWAM"><button class="g" id="bv" style="flex:0 0 auto">Buscar minhas vozes</button></div>
+  <select id="vsel" style="display:none;margin-top:6px"></select>
+  <label>Modelo de voz</label>
+  <select id="vm">
+    <option value="eleven_flash_v2_5">Flash v2.5 (mais rápido)</option>
+    <option value="eleven_multilingual_v2">Multilingual v2 (mais natural)</option>
+  </select>
+  <label>Nome do assistente</label>
+  <input id="nome" value="Jarvis" maxlength="20">
+  <label>Como você quer ser chamado</label>
+  <input id="user" value="senhor" maxlength="30">
+  <label>Personalidade (instruções para o Gemini)</label>
+  <textarea id="sys"></textarea>
+  <label class="chk" style="margin-top:8px"><input type="checkbox" id="hf" checked> Modo contínuo: depois de falar, volta a ouvir sozinho</label>
+  <label class="chk"><input type="checkbox" id="spk" checked> Responder em voz (ElevenLabs)</label>
+  <div style="margin-top:10px"><button class="g" id="bclr">🗑 Limpar conversa</button></div>
+  <small>As chaves ficam salvas só neste navegador.</small>
+</section>
+
+<div id="orbWrap">
+  <canvas id="orb" width="520" height="520"></canvas>
+  <div id="status">Em espera</div>
+  <div id="interim"></div>
+</div>
+
+<div id="chat"></div>
+
+<video id="cam" autoplay muted playsinline></video>
+<div id="perm"></div>
+<div id="ctl">
+  <button id="bmic">🎙 Ativar Jarvis</button>
+  <button id="bcam" class="g">📷 Câmera: desligada</button>
+  <button id="bstop" class="g">⏹ Interromper</button>
+</div>
+<div id="bar">
+  <input id="txt" placeholder="Ou digite aqui e aperte Enter...">
+  <button id="bsend">Enviar</button>
+</div>
+</main>
+
+<script>
+const $=id=>document.getElementById(id);
+const ls={g:k=>{try{return localStorage.getItem('jv_'+k)}catch(e){return null}},s:(k,v)=>{try{localStorage.setItem('jv_'+k,v)}catch(e){}}};
+
+/* ---------- Configuração ---------- */
+const SYS_PADRAO='Você é {NOME}, um assistente de inteligência artificial por voz, inspirado no J.A.R.V.I.S. Fale em português do Brasil, com tom educado, inteligente, levemente espirituoso e confiante. Trate o usuário por "{USER}". Suas respostas serão LIDAS EM VOZ ALTA: seja breve e natural (normalmente 1 a 3 frases), converse como numa conversa de verdade, sem listas, sem markdown, sem emojis, sem asteriscos e sem símbolos. Escreva números e siglas do jeito que se fala. Só se estenda se o usuário pedir uma explicação detalhada.';
+['ak','gm','ek','vid','vm','nome','user'].forEach(k=>{const v=ls.g(k);if(v!==null)$(k).value=v;$(k).addEventListener('input',()=>ls.s(k,$(k).value))});
+$('sys').value=ls.g('sys')||SYS_PADRAO;$('sys').addEventListener('input',()=>ls.s('sys',$('sys').value));
+['hf','spk'].forEach(k=>{const v=ls.g(k);if(v!==null)$(k).checked=v==='1';$(k).addEventListener('change',()=>ls.s(k,$(k).checked?'1':'0'))});
+$('bcfg').onclick=()=>$('cfg').classList.toggle('open');
+if(!$('ak').value||!$('ek').value)$('cfg').classList.add('open');
+
+$('bv').onclick=async()=>{
+  try{
+    if(!$('ek').value)throw new Error('Informe a chave da ElevenLabs.');
+    const r=await fetch('https://api.elevenlabs.io/v1/voices',{headers:{'xi-api-key':$('ek').value.trim()}});
+    const j=await r.json();
+    if(!r.ok)throw new Error('ElevenLabs erro '+r.status+' (a chave precisa de permissão para ler vozes)');
+    const v=(j.voices||[]).sort((a,b)=>(b.category==='premade')-(a.category==='premade'));
+    const sel=$('vsel');
+    sel.innerHTML='<option value="">Escolha uma voz...</option>'+v.map(x=>'<option value="'+x.voice_id+'">'+x.name+' ['+(x.category||'?')+']</option>').join('');
+    sel.style.display='block';
+    sel.onchange=()=>{if(sel.value){$('vid').value=sel.value;ls.s('vid',sel.value)}};
+  }catch(e){addMsg('e',e.message)}
+};
+
+/* ---------- Chat ---------- */
+let hist=[];
+try{hist=JSON.parse(ls.g('hist')||'[]')}catch(e){}
+function addMsg(t,txt){const d=document.createElement('div');d.className='m '+t;d.textContent=txt;$('chat').appendChild(d);$('chat').scrollTop=1e9;return d}
+hist.forEach(h=>addMsg(h.role==='user'?'u':'j',h.parts[0].text));
+const saveHist=()=>{hist=hist.slice(-40);ls.s('hist',JSON.stringify(hist))};
+$('bclr').onclick=()=>{hist=[];saveHist();$('chat').innerHTML=''};
+
+/* ---------- Estado ---------- */
+let state='idle',active=false,token=0;
+const LBL={idle:'Em espera',listening:'Ouvindo...',thinking:'Pensando...',speaking:'Falando...'};
+function setState(s){state=s;$('status').textContent=LBL[s]||s;$('bmic').textContent=active?'⏸ Pausar Jarvis':'🎙 Ativar Jarvis'}
+
+/* ---------- Gemini (texto) ---------- */
+const GBASE='https://generativelanguage.googleapis.com/v1beta/';
+let modeloOk=ls.g('modelo')||'';
+async function listarModelos(key){
+  const ld=await (await fetch(GBASE+'models?pageSize=200&key='+key)).json();
+  if(ld.error)throw new Error(ld.error.message);
+  const c=(ld.models||[]).filter(x=>(x.supportedGenerationMethods||[]).includes('generateContent')&&/flash/.test(x.name)&&!/image|tts|live|audio|omni|thinking|exp|robotics|computer/.test(x.name)).map(x=>x.name.replace('models/',''));
+  c.sort((a,b)=>(/lite/.test(a)-/lite/.test(b))||(a<b?1:-1));
+  if(!c.length)throw new Error('Nenhum modelo Flash encontrado. Digite o nome do modelo na configuração.');
+  return c;
+}
+let semThink=false;
+async function gemStream(onDelta,my,img){
+  const key=$('ak').value.trim();
+  if(!key)throw new Error('Informe a chave do Gemini.');
+  const sys=$('sys').value.replace(/\{NOME\}/g,$('nome').value||'Jarvis').replace(/\{USER\}/g,$('user').value||'senhor')+(img?' O usuário anexou uma imagem da câmera dele neste exato momento; use-a se for relevante para o que ele pergunta.':'');
+  const cont=hist.map((h,i)=>img&&i===hist.length-1?{role:'user',parts:[h.parts[0],{inline_data:{mime_type:'image/jpeg',data:img}}]}:h);
+  let cand=$('gm').value.trim()?[$('gm').value.trim()]:(modeloOk?[modeloOk]:await listarModelos(key));
+  for(let k=0;k<cand.length&&k<12;k++){
+    const gc={temperature:0.8};
+    if(!semThink)gc.thinkingConfig={thinkingBudget:0}; /* sem "pensar" antes: começa a responder mais rápido */
+    const r=await fetch(GBASE+'models/'+cand[k]+':streamGenerateContent?alt=sse&key='+key,{method:'POST',headers:{'content-type':'application/json'},
+      body:JSON.stringify({systemInstruction:{parts:[{text:sys}]},contents:cont,generationConfig:gc})});
+    if(!r.ok){
+      let e=null;try{e=(await r.json()).error}catch(x){}
+      e=e||{code:r.status,message:'Gemini erro '+r.status};
+      if(!semThink&&/think/i.test(e.message||'')){semThink=true;k--;continue}
+      if(modeloOk&&!$('gm').value.trim()){modeloOk='';ls.s('modelo','');cand=await listarModelos(key);k=-1;continue}
+      if(k===cand.length-1||![400,403,404,429,500,503].includes(e.code))throw new Error(e.message);
+      continue;
+    }
+    modeloOk=cand[k];ls.s('modelo',modeloOk);
+    const rd=r.body.getReader(),dec=new TextDecoder();let buf='',full='';
+    while(true){
+      const {done,value}=await rd.read();if(done)break;
+      buf+=dec.decode(value,{stream:true});
+      let i;
+      while((i=buf.indexOf('\n'))>=0){
+        const ln=buf.slice(0,i).trim();buf=buf.slice(i+1);
+        if(!ln.startsWith('data:'))continue;
+        try{const j=JSON.parse(ln.slice(5));const t=((j.candidates&&j.candidates[0]&&j.candidates[0].content&&j.candidates[0].content.parts)||[]).map(p=>p.text||'').join('');if(t){full+=t;onDelta(t)}}catch(x){}
+      }
+      if(my!==token){try{rd.cancel()}catch(x){}break}
+    }
+    return full.trim();
+  }
+  throw new Error('Nenhum modelo Gemini respondeu.');
+}
+
+/* ---------- ElevenLabs (voz) + reprodução ---------- */
+let AC=null,an=null,fonte=null;
+function audioCtx(){
+  if(!AC){AC=new (window.AudioContext||window.webkitAudioContext)();an=AC.createAnalyser();an.fftSize=256;an.connect(AC.destination)}
+  if(AC.state==='suspended')AC.resume();
+  return AC;
+}
+async function tts(texto){
+  const r=await fetch('https://api.elevenlabs.io/v1/text-to-speech/'+$('vid').value.trim()+'?output_format=mp3_44100_128',{method:'POST',
+    headers:{'xi-api-key':$('ek').value.trim(),'content-type':'application/json'},
+    body:JSON.stringify({text:texto,model_id:$('vm').value})});
+  if(!r.ok){let m='';try{const j=await r.json();m=typeof j.detail==='string'?j.detail:(j.detail&&(j.detail.message||j.detail.status))||JSON.stringify(j)}catch(e){}
+    throw new Error('ElevenLabs erro '+r.status+(m?': '+m:''))}
+  return await audioCtx().decodeAudioData(await r.arrayBuffer());
+}
+function tocar(buf){
+  return new Promise(res=>{const s=audioCtx().createBufferSource();s.buffer=buf;s.connect(an);fonte=s;s.onended=()=>{if(fonte===s)fonte=null;res()};s.start()});
+}
+function limpar(t){return t.replace(/[*_#`~>|]/g,'').replace(/\s+/g,' ').trim()}
+/* Pipeline: cada frase que o Gemini fecha já vai para a ElevenLabs em paralelo; o player toca na ordem. */
+function criarFala(my){
+  const q=[];let fim=false,acorda=null,buf='',n=0,mudo=!$('spk').checked;
+  if(!mudo&&!$('ek').value){mudo=true;addMsg('e','Informe a chave da ElevenLabs (ou desligue "Responder em voz").')}
+  const acordar=()=>{if(acorda){const f=acorda;acorda=null;f()}};
+  function empurrar(txt){
+    if(mudo)return;const c=limpar(txt);if(!c)return;
+    const p=tts(c);p.catch(()=>{});q.push(p);acordar();
+  }
+  function alimentar(d){
+    buf+=d;
+    for(;;){
+      const min=n?70:22,re=/[.!?…\n]+(?=\s)/g;let m,cut=-1;
+      while((m=re.exec(buf))){if(m.index+m[0].length>=min){cut=m.index+m[0].length;break}}
+      if(cut<0&&n===0&&buf.length>=45){const c=buf.lastIndexOf(',');if(c>20)cut=c+1} /* 1ª frase longa: corta na vírgula */
+      if(cut<0)break;
+      empurrar(buf.slice(0,cut));buf=buf.slice(cut);n++;
+    }
+  }
+  function finalizar(){empurrar(buf);buf='';fim=true;acordar()}
+  async function tocarTudo(){
+    let i=0;
+    try{
+      for(;;){
+        if(my!==token)return;
+        if(i<q.length){const b=await q[i++];if(my!==token)return;setState('speaking');await tocar(b)}
+        else if(fim)return;
+        else await new Promise(r=>acorda=r);
+      }
+    }catch(e){mudo=true;if(my===token)addMsg('e',e.message)}
+  }
+  return {alimentar,finalizar,tocarTudo,cancelar:()=>{fim=true;acordar()}};
+}
+
+/* ---------- Reconhecimento de fala (voz → texto) ---------- */
+const SR=window.SpeechRecognition||window.webkitSpeechRecognition;
+let rec=null,ocupado=false;
+function ouvir(){
+  if(!SR){addMsg('e','Seu navegador não suporta reconhecimento de voz. Use o Chrome ou Edge, ou digite no campo abaixo.');active=false;setState('idle');return}
+  if(!active||ocupado||rec)return;
+  rec=new SR();rec.lang='pt-BR';rec.interimResults=true;rec.continuous=false;
+  let final='';
+  rec.onstart=()=>setState('listening');
+  rec.onresult=e=>{let it='';for(let i=e.resultIndex;i<e.results.length;i++){const r=e.results[i];if(r.isFinal)final+=r[0].transcript;else it+=r[0].transcript}$('interim').textContent=final+it};
+  rec.onerror=e=>{
+    if(e.error==='not-allowed'||e.error==='service-not-allowed'){addMsg('e','Permita o uso do microfone no navegador.');active=false;setState('idle')}
+  };
+  rec.onend=()=>{
+    rec=null;$('interim').textContent='';
+    if(final.trim()){enviar(final.trim())}
+    else if(active&&!ocupado)setTimeout(ouvir,250);
+    else if(!ocupado)setState('idle');
+  };
+  try{rec.start()}catch(e){rec=null}
+}
+function pararOuvir(){if(rec){try{rec.abort()}catch(e){}rec=null}}
+
+/* ---------- Fluxo da conversa ---------- */
+async function enviar(texto){
+  if(ocupado){interromper(true)}
+  const my=++token;ocupado=true;pararOuvir();
+  addMsg('u',texto);hist.push({role:'user',parts:[{text:texto}]});saveHist();
+  setState('thinking');
+  const img=camOn?quadro():null,fala=criarFala(my),player=fala.tocarTudo();
+  let bolha=null,acum='';
+  try{
+    const resp=await gemStream(d=>{
+      if(my!==token)return;
+      acum+=d;if(!bolha)bolha=addMsg('j','');
+      bolha.textContent=acum;$('chat').scrollTop=1e9;
+      fala.alimentar(d);
+    },my,img);
+    if(resp){hist.push({role:'model',parts:[{text:resp}]})}else hist.pop();
+    saveHist();
+    if(my===token)fala.finalizar();else fala.cancelar();
+    await player;
+  }catch(e){
+    fala.cancelar();
+    if(my===token){addMsg('e',e.message);if(!acum)hist.pop();else{hist.push({role:'model',parts:[{text:acum}]})}saveHist()}
+  }finally{
+    if(my===token){
+      ocupado=false;setState('idle');
+      if(active&&$('hf').checked)setTimeout(ouvir,300);else{active=false;setState('idle')}
+    }
+  }
+}
+function interromper(silencioso){
+  token++;pararOuvir();
+  if(fonte){try{fonte.stop()}catch(e){}fonte=null}
+  ocupado=false;
+  if(!silencioso){active=false;setState('idle')}
+}
+
+$('bmic').onclick=async()=>{
+  audioCtx();if(!permOk)await permissoes();
+  if(active){active=false;interromper(true);setState('idle');return}
+  active=true;if(ocupado)interromper(true);setState('idle');ouvir();
+};
+$('bstop').onclick=()=>interromper(false);
+$('bsend').onclick=()=>{const t=$('txt').value.trim();if(!t)return;$('txt').value='';audioCtx();enviar(t)};
+$('txt').addEventListener('keydown',e=>{if(e.key==='Enter')$('bsend').click()});
+
+/* ---------- Permissões (microfone + câmera) e câmera ---------- */
+let camOn=false,camStream=null,permOk=false;
+const vid=$('cam');
+function pararFaixas(s,tipo){if(!s)return;(tipo==='v'?s.getVideoTracks():tipo==='a'?s.getAudioTracks():s.getTracks()).forEach(t=>t.stop())}
+function ligarVideo(s){camStream=s;vid.srcObject=s;vid.style.display='block';camOn=true;ls.s('cam','1');$('bcam').textContent='📷 Câmera: ligada'}
+function desligarCam(){pararFaixas(camStream);camStream=null;vid.srcObject=null;vid.style.display='none';camOn=false;ls.s('cam','0');$('bcam').textContent='📷 Câmera: desligada'}
+async function permissoes(){
+  if(!navigator.mediaDevices||!navigator.mediaDevices.getUserMedia){addMsg('e','Este navegador bloqueou o acesso a mic/câmera. Abra por https:// ou http://localhost (não direto pelo arquivo).');return}
+  const querCam=ls.g('cam')!=='0';
+  try{
+    const s=await navigator.mediaDevices.getUserMedia({audio:true,video:querCam});
+    pararFaixas(s,'a');permOk=true;
+    if(querCam&&s.getVideoTracks().length)ligarVideo(s);
+    $('perm').textContent='Microfone'+(querCam?' e câmera':'')+' liberados ✔';
+  }catch(e){
+    try{const s=await navigator.mediaDevices.getUserMedia({audio:true});pararFaixas(s);permOk=true;$('perm').textContent='Microfone liberado ✔ (câmera não permitida)'}
+    catch(e2){$('perm').textContent='Permissão negada: clique no cadeado ao lado do endereço e permita microfone e câmera.'}
+  }
+}
+$('bcam').onclick=async()=>{
+  if(camOn){desligarCam();return}
+  try{ligarVideo(await navigator.mediaDevices.getUserMedia({video:true}))}catch(e){addMsg('e','Permita a câmera no navegador (cadeado ao lado do endereço).')}
+};
+function quadro(){
+  if(!camOn||!vid.videoWidth)return null;
+  const c=document.createElement('canvas'),w=Math.min(640,vid.videoWidth);c.width=w;c.height=Math.round(w*vid.videoHeight/vid.videoWidth);
+  c.getContext('2d').drawImage(vid,0,0,c.width,c.height);
+  return c.toDataURL('image/jpeg',.7).split(',')[1];
+}
+window.addEventListener('load',permissoes);
+
+/* ---------- Orbe holográfico ---------- */
+const cv=$('orb'),cx=cv.getContext('2d'),W=cv.width,H=cv.height;
+let t0=0,nivel=0;
+const dados=new Uint8Array(128);
+function volume(){
+  if(state==='speaking'&&an){an.getByteFrequencyData(dados);let s=0;for(let i=0;i<64;i++)s+=dados[i];return Math.min(1,s/64/140)}
+  return 0;
+}
+function frame(ts){
+  const t=ts/1000,v=volume();nivel+=(v-nivel)*.25;
+  cx.clearRect(0,0,W,H);
+  const c=W/2,base={idle:.55,listening:.8,thinking:.7,speaking:.75}[state]||.55;
+  const pulso=state==='thinking'?(Math.sin(t*6)*.04):(state==='listening'?Math.sin(t*3)*.03:0);
+  const R=W*.2*(1+nivel*.35+pulso);
+  const g=cx.createRadialGradient(c,c,0,c,c,W*.5);
+  g.addColorStop(0,'rgba(255,201,51,'+(.35*base+nivel*.3)+')');g.addColorStop(.5,'rgba(255,160,30,'+(.10*base)+')');g.addColorStop(1,'rgba(255,160,30,0)');
+  cx.fillStyle=g;cx.fillRect(0,0,W,H);
+  for(let k=0;k<4;k++){
+    cx.beginPath();
+    const rr=R+k*W*.05,sp=(state==='thinking'?2.2:.6)*(k%2?-1:1),n=90;
+    for(let i=0;i<=n;i++){
+      const a=i/n*Math.PI*2,ruido=Math.sin(a*(5+k)+t*sp*2)*(4+nivel*26)+Math.sin(a*9-t*sp)*(2+nivel*10);
+      const x=c+Math.cos(a)*(rr+ruido),y=c+Math.sin(a)*(rr+ruido);
+      i?cx.lineTo(x,y):cx.moveTo(x,y);
+    }
+    cx.closePath();cx.strokeStyle='rgba(255,201,51,'+(.85-k*.17)+')';cx.lineWidth=2.2-k*.3;cx.stroke();
+  }
+  cx.beginPath();cx.arc(c,c,R*.55,0,7);cx.fillStyle='rgba(255,230,150,'+(.25+nivel*.5)+')';cx.fill();
+  cx.setLineDash([4,10]);cx.beginPath();cx.arc(c,c,W*.44,t*.4,t*.4+Math.PI*1.5);cx.strokeStyle='rgba(255,201,51,.35)';cx.lineWidth=1.5;cx.stroke();cx.setLineDash([]);
+  requestAnimationFrame(frame);
+}
+requestAnimationFrame(frame);
+setState('idle');
+</script>
+</body>
+</html>
